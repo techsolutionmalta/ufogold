@@ -1,0 +1,40 @@
+
+name: Compila UFO Bridge per iPhone
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Scarica progetto
+        uses: actions/checkout@v4
+
+      - name: Compila applicazione iOS
+        run: |
+          xcodebuild \
+            -project UFOBridge.xcodeproj \
+            -scheme UFOBridge \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Crea file IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/UFOBridge.app Payload/
+          zip -qr UFOBridge.ipa Payload
+
+      - name: Pubblica IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: TechSolution-UFO-iPhone
+          path: UFOBridge.ipa
