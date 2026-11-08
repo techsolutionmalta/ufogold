@@ -1,0 +1,85 @@
+name: UFO Bridge 1.1.1 - BUILD14
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Estrai release verificata
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP='UFOBridge-1.1.1-BUILD14.zip'
+          test -s "$ZIP" || { echo "::error::Carica $ZIP nella radice del repository"; exit 1; }
+          mkdir project
+          unzip -q "$ZIP" -d project
+          test -f project/UFOBridge.xcodeproj/project.pbxproj
+          test -f project/UFOBridge/KseniaReadParser.swift
+          test -s project/UFOBridge/Assets.xcassets/AppIcon.appiconset/Icon-1024.png
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' project/UFOBridge/Info.plist)
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' project/UFOBridge/Info.plist)
+          [[ "$VERSION" == '1.1.1' && "$BUILD" == '14' ]] || { echo "::error::Versione errata"; exit 1; }
+          grep -Fq 'Release 1.1.1 RC' project/UFOBridge/ContentView.swift
+          grep -Fq '("WLS_SENSORS", "Sensore")' project/UFOBridge/KseniaReadParser.swift
+          grep -Fq 'records(for: "STATUS_" + group.key' project/UFOBridge/KseniaReadParser.swift
+          grep -Fq 'CMD_EXE_SCENARIO' project/UFOBridge/KseniaSession.swift
+          grep -Fq 'ATTIVA NEBBIA' project/UFOBridge/ContentView.swift
+          grep -Fq 'scenarioMappingConfirmed' project/UFOBridge/ContentView.swift
+          echo "VERIFICATO: $VERSION build $BUILD"
+          shasum -a 256 "$ZIP"
+
+      - name: Test protocollo e letture offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh project/Tests/run-offline-tests.sh
+
+      - name: Compila con Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project project/UFOBridge.xcodeproj \
+            -scheme UFOBridge \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedUFO" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Controlla IPA e versione
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedUFO/Build/Products/Release-iphoneos/UFOBridge.app"
+          test -d "$APP"; test -s "$APP/Assets.car"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")
+          [[ "$VERSION" == '1.1.1' && "$BUILD" == '14' ]]
+          mkdir -p output "$RUNNER_TEMP/UFOPayload/Payload"
+          ditto "$APP" "$RUNNER_TEMP/UFOPayload/Payload/UFOBridge.app"
+          (cd "$RUNNER_TEMP/UFOPayload" && zip -qr "$GITHUB_WORKSPACE/output/UFOBridge-1.1.1-BUILD14.ipa" Payload)
+          cat > output/BUILD-VERIFICATA.txt <<EOF
+          UFO Bridge $VERSION (build $BUILD)
+          Bundle: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          Icona compilata: Assets.car presente
+          Commit: $(git rev-parse HEAD)
+          EOF
+          cat output/BUILD-VERIFICATA.txt
+
+      - name: Pubblica IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: UFOBridge-V111-BUILD14
+          path: output/
+          if-no-files-found: error
