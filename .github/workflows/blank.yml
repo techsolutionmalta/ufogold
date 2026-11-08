@@ -1,5 +1,5 @@
 
-name: Compila UFO Bridge per iPhone
+name: UFO Bridge 1.0.1 - Build verificata
 
 on:
   workflow_dispatch:
@@ -12,21 +12,47 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Scarica progetto
+      - name: Scarica repository
         uses: actions/checkout@v4
-      
-      - name: Estrai progetto UFO
-        run: |
-          unzip -q -o UFO-Bridge-1.0-GitHub.zip
-          echo "Controllo progetto Xcode"
-          find . -name "project.pbxproj"
-          test -f UFOBridge.xcodeproj/project.pbxproj
-  
 
-      - name: Compila applicazione iOS
+      - name: Verifica e prepara versione 1.0.1
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for ZIP in \
+            UFOBridge_v101_GitHub_20261108.zip \
+            TechSolution-UFO-iOS-CloudBuild.zip
+          do
+            if [ ! -f "$ZIP" ]; then
+              continue
+            fi
+
+            rm -rf project
+            mkdir project
+            unzip -q "$ZIP" -d project
+
+            VERSION=$(
+              /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleShortVersionString' \
+              project/UFOBridge/Info.plist 2>/dev/null || true
+            )
+
+            if [ "$VERSION" = "1.0.1" ] && \
+               grep -q "Cloud Ksenia" \
+               project/UFOBridge/ContentView.swift; then
+              echo "OK: versione 1.0.1 da $ZIP"
+              exit 0
+            fi
+          done
+
+          echo "::error::ZIP versione 1.0.1 non trovato"
+          exit 1
+
+      - name: Compila UFO Bridge
         run: |
           xcodebuild \
-            -project UFOBridge.xcodeproj \
+            -project project/UFOBridge.xcodeproj \
             -scheme UFOBridge \
             -configuration Release \
             -sdk iphoneos \
@@ -35,14 +61,29 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Crea file IPA
+      - name: Verifica applicazione compilata
+        run: |
+          APP=build/Build/Products/Release-iphoneos/UFOBridge.app
+          test -d "$APP"
+          VERSION=$(/usr/libexec/PlistBuddy -c \
+            'Print :CFBundleShortVersionString' "$APP/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c \
+            'Print :CFBundleVersion' "$APP/Info.plist")
+          echo "Versione: $VERSION - Build: $BUILD"
+          test "$VERSION" = "1.0.1"
+          test "$BUILD" = "11"
+
+      - name: Crea IPA
         run: |
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/UFOBridge.app Payload/
-          zip -qr UFOBridge.ipa Payload
+          ditto \
+            build/Build/Products/Release-iphoneos/UFOBridge.app \
+            Payload/UFOBridge.app
+          zip -qr UFOBridge-1.0.1.ipa Payload
 
       - name: Pubblica IPA
         uses: actions/upload-artifact@v4
         with:
-          name: TechSolution-UFO-iPhone
-          path: UFOBridge.ipa
+          name: UFOBridge-1.0.1-BUILD11
+          path: UFOBridge-1.0.1.ipa
+          if-no-files-found: error
