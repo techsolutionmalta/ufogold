@@ -17,7 +17,7 @@ jobs:
       
       - name: Estrai progetto UFO
         run: |
-          unzip -q -o TechSolution-UFO-iOS-CloudBuild.zip
+          unzip -q -o UFO-Bridge-1.0-GitHub.zip
           echo "Controllo progetto Xcode"
           find . -name "project.pbxproj"
           test -f UFOBridge.xcodeproj/project.pbxproj
