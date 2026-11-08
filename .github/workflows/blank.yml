@@ -14,6 +14,14 @@ jobs:
     steps:
       - name: Scarica progetto
         uses: actions/checkout@v4
+      
+      - name: Estrai progetto UFO
+        run: |
+          unzip -q -o TechSolution-UFO-iOS-CloudBuild.zip
+          echo "Controllo progetto Xcode"
+          find . -name "project.pbxproj"
+          test -f UFOBridge.xcodeproj/project.pbxproj
+  
 
       - name: Compila applicazione iOS
         run: |
