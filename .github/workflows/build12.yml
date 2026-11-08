@@ -1,0 +1,75 @@
+
+name: UFO Bridge 1.0.2 - BUILD12 VERIFICATA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Scarica repository
+        uses: actions/checkout@v4
+
+      - name: Estrai e verifica versione 1.0.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q UFOBridge-1.0.2-VERIFICA.zip -d project
+
+          test -f project/UFOBridge.xcodeproj/project.pbxproj
+          test -f project/UFOBridge/Assets.xcassets/AppIcon.appiconset/Icon-1024.png
+
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' project/UFOBridge/Info.plist)
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' project/UFOBridge/Info.plist)
+
+          test "$VERSION" = "1.0.2"
+          test "$BUILD" = "12"
+          grep -Fq 'NUOVA VERSIONE' project/UFOBridge/ContentView.swift
+          echo "Sorgenti verificati: versione $VERSION build $BUILD"
+
+      - name: Compila app iPhone
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project project/UFOBridge.xcodeproj \
+            -scheme UFOBridge \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Prepara IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release-iphoneos/UFOBridge.app"
+          test -d "$APP"
+          test -s "$APP/Assets.car"
+
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")
+
+          test "$VERSION" = "1.0.2"
+          test "$BUILD" = "12"
+
+          mkdir -p output/Payload
+          ditto "$APP" output/Payload/UFOBridge.app
+
+          cd output
+          zip -qr UFOBridge-1.0.2-BUILD12.ipa Payload
+          rm -rf Payload
+
+      - name: Pubblica IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: UFOBridge-V102-BUILD12-VERIFICATA
+          path: output/UFOBridge-1.0.2-BUILD12.ipa
+          if-no-files-found: error
